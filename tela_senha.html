@@ -1,22 +1,4 @@
-"""Gera o index.html protegido por senha a partir do fonte.html.
-Uso (PowerShell):  $env:INDEX_SENHA="sua senha"; python build.py
-A senha NAO fica salva em nenhum arquivo."""
-import os, base64, sys
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import hashes
-
-senha = os.environ.get("INDEX_SENHA")
-if not senha:
-    sys.exit("Defina INDEX_SENHA")
-ITER = 250000
-salt, iv = os.urandom(16), os.urandom(12)
-key = PBKDF2HMAC(hashes.SHA256(), 32, salt, ITER).derive(senha.encode())
-dados = open("fonte.html", "rb").read()
-ct = AESGCM(key).encrypt(iv, dados, None)
-b64 = lambda b: base64.b64encode(b).decode()
-
-html = """<!doctype html>
+<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
@@ -53,7 +35,3 @@ document.getElementById("f").addEventListener("submit",async e=>{
 });
 (async()=>{try{const s=sessionStorage.getItem("k");if(s)mostrar(await abrir(s));}catch(_){}})();
 </script></body></html>
-"""
-html = html.replace("@@SALT@@", b64(salt)).replace("@@IV@@", b64(iv)).replace("@@CT@@", b64(ct)).replace("@@IT@@", str(ITER))
-open("index.html", "w", encoding="utf-8").write(html)
-print("index.html gerado")

@@ -3,7 +3,7 @@ lista, recriptografa com a senha e publica nos 2 repositorios.
 Uso:  python atualizar.py            (so publica se houver mudanca)
       python atualizar.py --forcar   (republica mesmo sem mudanca)
 A senha fica em senha.local (so neste computador, nunca vai para o GitHub)."""
-import os, sys, json, base64, subprocess, tempfile, shutil
+import os, sys, json, base64, subprocess, tempfile, shutil, urllib.request
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
@@ -14,22 +14,25 @@ IGNORAR = {"index", f"{DONO}.github.io"}
 ITER = 250000
 P = lambda *a: os.path.join(AQUI, *a)
 
-def gh(*args):
-    r = subprocess.run(["gh", *args], capture_output=True, text=True, encoding="utf-8")
-    return r.returncode, r.stdout
+def http(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "index-atualizar"})
+    return urllib.request.urlopen(req, timeout=30)
 
 def git(cwd, *args):
     subprocess.run(["git", "-C", cwd, *args], check=True, capture_output=True, text=True)
 
 def publicos_com_pages():
-    _, out = gh("repo", "list", DONO, "--limit", "200", "--visibility", "public",
-                "--json", "name,description,isArchived,isFork")
+    # Sem login: lista publica do GitHub + confere se a pagina do projeto responde.
+    repos = json.load(http(f"https://api.github.com/users/{DONO}/repos?per_page=100&type=owner"))
     achados = {}
-    for r in json.loads(out):
-        if r["name"] in IGNORAR or r["isArchived"] or r["isFork"]:
+    for r in repos:
+        if r["name"] in IGNORAR or r["archived"] or r["fork"] or r["private"]:
             continue
-        code, _ = gh("api", f"repos/{DONO}/{r['name']}/pages", "-q", ".html_url")
-        if code == 0:
+        try:
+            ok = http(f"https://{DONO}.github.io/{r['name']}/").status == 200
+        except Exception:
+            ok = False
+        if ok:
             achados[r["name"]] = r.get("description") or ""
     return achados
 
@@ -75,7 +78,7 @@ def main():
     tmp = tempfile.mkdtemp()
     try:
         destino = os.path.join(tmp, "site")
-        subprocess.run(["gh", "repo", "clone", f"{DONO}/{DONO}.github.io", destino, "--", "-q"], check=True)
+        subprocess.run(["git", "clone", "-q", f"https://github.com/{DONO}/{DONO}.github.io.git", destino], check=True)
         shutil.copy(P("index.html"), os.path.join(destino, "index.html"))
         git(destino, "add", "index.html"); git(destino, "commit", "-m", msg); git(destino, "push", "-q")
     finally:
